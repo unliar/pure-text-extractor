@@ -27,7 +27,7 @@ WORKDIR /app
 # 复制可执行文件
 COPY --from=builder /app/main .
 # 运行时配置
-EXPOSE 7788
+EXPOSE 8080
 
 # 根据操作系统选择正确的入口点
 ENTRYPOINT ["./main"]
