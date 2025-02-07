@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -14,14 +17,47 @@ type RSS struct {
 }
 
 type Channel struct {
-	Title string `xml:"title"`
-	Items []Item `xml:"item"`
+	Title         string `xml:"title"`
+	LastBuildDate string `xml:"lastBuildDate"`
+	Items         []Item `xml:"item"`
 }
 
 type Item struct {
-	Title       string `xml:"title"`
-	Description string `xml:"description"`
-	Link        string `xml:"link"`
+	// 使用 map 存储动态字段
+	Fields map[string]string `xml:"-"`
+}
+
+// 自定义 UnmarshalXML 方法以支持动态字段
+func (i *Item) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	// 初始化 Fields map
+	i.Fields = make(map[string]string)
+
+	// 循环处理所有 XML 元素
+	for {
+		token, err := d.Token()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		switch t := token.(type) {
+		case xml.StartElement:
+			var value string
+			err := d.DecodeElement(&value, &t)
+			if err != nil {
+				return err
+			}
+			// 将每个元素存储到 Fields map 中，使用元素名作为键
+			i.Fields[t.Name.Local] = value
+
+		case xml.EndElement:
+			if t.Name == start.Name {
+				return nil
+			}
+		}
+	}
 }
 
 func main() {
@@ -43,8 +79,27 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 处理 URL 中可能存在的额外查询参数
+	parsedURL, err := url.Parse(rssURL)
+	if err != nil {
+		http.Error(w, "Invalid RSS URL", http.StatusBadRequest)
+		return
+	}
+
+	// 获取分隔线配置
+	separatorChar := r.URL.Query().Get("separator")
+	if separatorChar == "" {
+		separatorChar = "\n\n" // 默认分隔线
+	}
+	// 替换转义的换行符
+	separatorChar = strings.ReplaceAll(separatorChar, "\\n", "\n")
+
+	// 获取是否去除HTML标签的配置
+	stripHTML := r.URL.Query().Get("stripHTML")
+	stripHTMLBool := stripHTML != "false" // 默认为true
+
 	// 获取并解析 RSS 内容
-	content, err := fetchAndParseRSS(rssURL)
+	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool)
 	if err != nil {
 		http.Error(w, "Error processing RSS feed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -54,7 +109,7 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(content))
 }
 
-func fetchAndParseRSS(url string) (string, error) {
+func fetchAndParseRSS(url string, separatorChar string, stripHTML bool) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -71,27 +126,40 @@ func fetchAndParseRSS(url string) (string, error) {
 		return "", fmt.Errorf("failed to parse RSS: %w", err)
 	}
 
-	return formatContent(rss), nil
+	return formatContent(rss, separatorChar, stripHTML), nil
 }
 
-func formatContent(rss RSS) string {
+func formatContent(rss RSS, separatorChar string, stripHTML bool) string {
 	var builder strings.Builder
-
-	// 添加频道标题
-	builder.WriteString(fmt.Sprintf("频道: %s\n\n", rss.Channel.Title))
-
+	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
+	builder.WriteString(fmt.Sprintf("Channel Last Build Date: %s%s", rss.Channel.LastBuildDate, separatorChar))
 	// 格式化每个条目
 	for i, item := range rss.Channel.Items {
-		builder.WriteString(fmt.Sprintf("条目 %d:\n", i+1))
-		builder.WriteString(fmt.Sprintf("标题: %s\n", strings.TrimSpace(item.Title)))
-		builder.WriteString(fmt.Sprintf("描述: %s\n", strings.TrimSpace(item.Description)))
-		builder.WriteString(fmt.Sprintf("链接: %s\n", strings.TrimSpace(item.Link)))
+		builder.WriteString(fmt.Sprintf("Channel Item %d:\n", i+1))
+
+		// 使用反射获取所有字段
+		for key, value := range item.Fields {
+			var valueStr string
+			if stripHTML {
+				valueStr = strings.TrimSpace(stripHTMLTags(value))
+			} else {
+				valueStr = strings.TrimSpace(value)
+			}
+			builder.WriteString(fmt.Sprintf("%s: %s\n", key, valueStr))
+		}
 
 		// 添加分隔线（最后一个条目不加）
 		if i < len(rss.Channel.Items)-1 {
-			builder.WriteString("\n────────────────────────\n\n")
+			builder.WriteString(fmt.Sprintf("%s", strings.Repeat(separatorChar, 1)))
 		}
 	}
 
 	return builder.String()
+}
+
+// stripHTMLTags removes HTML tags from a string
+func stripHTMLTags(input string) string {
+	// Remove HTML tags
+	htmlTagRegex := regexp.MustCompile(`<[^>]*>`)
+	return htmlTagRegex.ReplaceAllString(input, "")
 }
