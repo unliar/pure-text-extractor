@@ -1,1 +1,9 @@
+tmp
+logs
+files
+uploads
+air_errors.log
+cache
+build.sh
 bk.sh
+dist

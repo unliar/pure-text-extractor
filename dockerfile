@@ -8,7 +8,8 @@ ARG TARGETARCH
 WORKDIR /app
 
 # 复制并下载依赖
-COPY go.mod go.sum ./
+COPY go.mod ./
+COPY go.sum* ./
 RUN go mod download
 
 # 复制源代码
