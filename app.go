@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -91,6 +92,17 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	if separatorChar == "" {
 		separatorChar = "\n\n" // 默认分隔线
 	}
+	// 获取长度配置
+	length := r.URL.Query().Get("length")
+	if length == "" {
+		length = "0" // 默认不限制长度
+	}
+	// 转换成数值
+	lengthInt, err := strconv.Atoi(length)
+	if err != nil {
+		http.Error(w, "Invalid length parameter", http.StatusBadRequest)
+		return
+	}
 	// 替换转义的换行符
 	separatorChar = strings.ReplaceAll(separatorChar, "\\n", "\n")
 
@@ -99,7 +111,7 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	stripHTMLBool := stripHTML != "false" // 默认为true
 
 	// 获取并解析 RSS 内容
-	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool)
+	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool, lengthInt)
 	if err != nil {
 		http.Error(w, "Error processing RSS feed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -109,7 +121,7 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(content))
 }
 
-func fetchAndParseRSS(url string, separatorChar string, stripHTML bool) (string, error) {
+func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length int) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -126,15 +138,18 @@ func fetchAndParseRSS(url string, separatorChar string, stripHTML bool) (string,
 		return "", fmt.Errorf("failed to parse RSS: %w", err)
 	}
 
-	return formatContent(rss, separatorChar, stripHTML), nil
+	return formatContent(rss, separatorChar, stripHTML, length), nil
 }
 
-func formatContent(rss RSS, separatorChar string, stripHTML bool) string {
+func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
 	builder.WriteString(fmt.Sprintf("Channel Last Build Date: %s%s", rss.Channel.LastBuildDate, separatorChar))
 	// 格式化每个条目
 	for i, item := range rss.Channel.Items {
+		if length != 0 && i >= length {
+			break
+		}
 		builder.WriteString(fmt.Sprintf("Channel Item %d:\n", i+1))
 
 		// 使用反射获取所有字段
