@@ -19,9 +19,9 @@ type RSS struct {
 }
 
 type Channel struct {
-	Title         string `xml:"title"`
-	LastBuildDate string `xml:"lastBuildDate"`
-	Items         []Item `xml:"item"`
+	Title       string `xml:"title"`
+	ChannelLink string `xml:"link"`
+	Items       []Item `xml:"item"`
 }
 
 type Item struct {
@@ -54,6 +54,59 @@ func (i *Item) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			// 将每个元素存储到 Fields map 中，使用元素名作为键
 			i.Fields[t.Name.Local] = value
 
+		case xml.EndElement:
+			if t.Name == start.Name {
+				return nil
+			}
+		}
+	}
+}
+func (c *Channel) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	for {
+		token, err := d.Token()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		switch t := token.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "title":
+				var title string
+				if err := d.DecodeElement(&title, &t); err != nil {
+					return err
+				}
+				c.Title = title
+			case "link":
+				// 获取 atom:link 中的 href 属性
+				// 或者 link 的值
+				var link string
+				for _, attr := range t.Attr {
+					// More flexible href matching
+					if (attr.Name.Local == "href") && attr.Value != "" {
+						link = attr.Value
+						break
+					}
+				}
+				// If no href attribute found, try decoding the element
+				if link == "" {
+					if err := d.DecodeElement(&link, &t); err != nil {
+						return err
+					}
+				}
+
+				c.ChannelLink = link
+
+			case "item":
+				var item Item
+				if err := d.DecodeElement(&item, &t); err != nil {
+					return err
+				}
+				c.Items = append(c.Items, item)
+			}
 		case xml.EndElement:
 			if t.Name == start.Name {
 				return nil
@@ -145,7 +198,7 @@ func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length i
 func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
-	builder.WriteString(fmt.Sprintf("Channel Last Build Date: %s%s", rss.Channel.LastBuildDate, separatorChar))
+	builder.WriteString(fmt.Sprintf("Channel Link: %s\n\n", rss.Channel.ChannelLink))
 	// 格式化每个条目
 	for i, item := range rss.Channel.Items {
 		if length != 0 && i >= length {
