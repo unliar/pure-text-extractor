@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -153,7 +154,14 @@ func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) st
 		builder.WriteString(fmt.Sprintf("Channel Item %d:\n", i+1))
 
 		// 使用反射获取所有字段
-		for key, value := range item.Fields {
+		keys := make([]string, 0, len(item.Fields))
+		for key := range item.Fields {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			value := item.Fields[key]
 			var valueStr string
 			if stripHTML {
 				valueStr = strings.TrimSpace(stripHTMLTags(value))
