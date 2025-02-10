@@ -7,7 +7,7 @@ on:
       - "v*"
 
 env:
-  REGISTRY: { { secrets.REGISTRY } } # 从 github secrets 获取
+  REGISTRY: ${{ secrets.REGISTRY }} # 从 github secrets 获取
   IMAGE_NAME: ${{  secrets.IMAGE_NAME }}
   USERNAME: ${{  secrets.USERNAME }}
   PASSWORD: ${{  secrets.PASSWORD }}
