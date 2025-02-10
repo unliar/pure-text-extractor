@@ -198,7 +198,10 @@ func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length i
 func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
-	builder.WriteString(fmt.Sprintf("Channel Link: %s\n\n", rss.Channel.ChannelLink))
+	if rss.Channel.ChannelLink != "" {
+		builder.WriteString(fmt.Sprintf("Channel Link: %s", rss.Channel.ChannelLink))
+	}
+	builder.WriteString(separatorChar)
 	// 格式化每个条目
 	for i, item := range rss.Channel.Items {
 		if length != 0 && i >= length {
