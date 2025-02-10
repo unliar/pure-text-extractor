@@ -46,3 +46,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Print Image Tags
+        run: |
+          echo "Generated Image Tags:"
+          echo "${{ steps.meta.outputs.tags }}"
