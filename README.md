@@ -14,7 +14,7 @@
 - `url`: HTML URL
 - `separator`: item line separator default to `\n\n`
 - `stripHTML`: whether to strip HTML tags default to `true`
-- `selector`: CSS selector for the content, default to `body`
+- `selector`: CSS selector for the content, default to `body`. the detail can be found at https://github.com/PuerkitoBio/goquery
 
 # example
 
