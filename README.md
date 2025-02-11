@@ -32,7 +32,7 @@ curl "http://localhost:8080/process-html?url=https://rsshub.flyneko.com&separato
 version: "3"
 
 services:
-  - name: pure-text-rss
+  - name: pure-text-extractor
     image: ghcr.io/unliar/pure-text-extractor:latest
     ports:
       - 8080:8080
