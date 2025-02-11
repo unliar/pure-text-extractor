@@ -252,67 +252,86 @@ func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(htmlContent))
 }
 
+// RSSParams represents the parameters for RSS processing
+type RSSParams struct {
+	URL         string
+	Separator   string
+	StripHTML   bool
+	RemoveSpace bool
+	Length      int
+}
+
+// extractRSSParams extracts and validates RSS processing parameters
+func extractRSSParams(r *http.Request) (RSSParams, error) {
+	// Extract RSS URL
+	rssURL := r.URL.Query().Get("url")
+	if rssURL == "" {
+		return RSSParams{}, fmt.Errorf("missing RSS URL parameter")
+	}
+
+	// Parse URL
+	parsedURL, err := url.Parse(rssURL)
+	if err != nil {
+		return RSSParams{}, fmt.Errorf("invalid RSS URL")
+	}
+
+	// Extract length parameter
+	lengthStr := r.URL.Query().Get("length")
+	if lengthStr == "" {
+		lengthStr = "0" // Default: no length limit
+	}
+	lengthInt, err := strconv.Atoi(lengthStr)
+	if err != nil {
+		return RSSParams{}, fmt.Errorf("invalid length parameter")
+	}
+
+	// Construct params with default values
+	params := RSSParams{
+		URL:         parsedURL.String(),
+		Separator:   r.URL.Query().Get("separator"),
+		StripHTML:   r.URL.Query().Get("stripHTML") != "false",
+		RemoveSpace: r.URL.Query().Get("removeSpace") != "false",
+		Length:      lengthInt,
+	}
+
+	// Set default separator and replace escaped newlines
+	if params.Separator == "" {
+		params.Separator = "\n\n"
+	}
+	params.Separator = strings.ReplaceAll(params.Separator, "\\n", "\n")
+
+	return params, nil
+}
+
 func processRSSHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate HTTP method
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 从查询参数中获取 RSS URL
-	rssURL := r.URL.Query().Get("url")
-	if rssURL == "" {
-		http.Error(w, "Missing RSS URL parameter", http.StatusBadRequest)
-		return
-	}
-
-	// 处理 URL 中可能存在的额外查询参数
-	parsedURL, err := url.Parse(rssURL)
+	// Extract and validate parameters
+	params, err := extractRSSParams(r)
 	if err != nil {
-		http.Error(w, "Invalid RSS URL", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// 获取分隔线配置
-	separatorChar := r.URL.Query().Get("separator")
-	if separatorChar == "" {
-		separatorChar = "\n\n" // 默认分隔线
-	}
-	removeSpace := r.URL.Query().Get("removeSpace")
-	if removeSpace == "" {
-		removeSpace = "true" // removeSpace 默认为 true
-	}
-	// 获取长度配置
-	length := r.URL.Query().Get("length")
-	if length == "" {
-		length = "0" // 默认不限制长度
-	}
-	// 转换成数值
-	lengthInt, err := strconv.Atoi(length)
+	// Fetch and process RSS content
+	content, err := fetchAndParseRSS(params)
 	if err != nil {
-		http.Error(w, "Invalid length parameter", http.StatusBadRequest)
-		return
-	}
-	// 替换转义的换行符
-	separatorChar = strings.ReplaceAll(separatorChar, "\\n", "\n")
-
-	// 获取是否去除HTML标签的配置
-	stripHTML := r.URL.Query().Get("stripHTML")
-	stripHTMLBool := stripHTML != "false" // 默认为true
-
-	// 获取并解析 RSS 内容
-	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool, lengthInt, removeSpace == "true")
-	if err != nil {
-		http.Error(w, "Error processing RSS feed: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Error processing RSS feed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Send response
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write([]byte(content))
 }
 
-func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length int, removeSpace bool) (string, error) {
+func fetchAndParseRSS(params RSSParams) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(params.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch RSS: %w", err)
 	}
@@ -327,24 +346,26 @@ func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length i
 		return "", fmt.Errorf("failed to parse RSS: %w", err)
 	}
 
-	return formatContent(rss, separatorChar, stripHTML, length, removeSpace), nil
+	return formatContent(rss, params), nil
 }
 
-func formatContent(rss RSS, separatorChar string, stripHTML bool, length int, removeSpace bool) string {
+func formatContent(rss RSS, params RSSParams) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
+
 	if rss.Channel.ChannelLink != "" {
 		builder.WriteString(fmt.Sprintf("Channel Link: %s", rss.Channel.ChannelLink))
 	}
-	builder.WriteString(separatorChar)
-	// 格式化每个条目
+	builder.WriteString(params.Separator)
+
+	// Format each item
 	for i, item := range rss.Channel.Items {
-		if length != 0 && i >= length {
+		if params.Length != 0 && i >= params.Length {
 			break
 		}
 		builder.WriteString(fmt.Sprintf("Channel Item %d:\n", i+1))
 
-		// 使用反射获取所有字段
+		// Sort keys for consistent output
 		keys := make([]string, 0, len(item.Fields))
 		for key := range item.Fields {
 			keys = append(keys, key)
@@ -354,25 +375,24 @@ func formatContent(rss RSS, separatorChar string, stripHTML bool, length int, re
 		for _, key := range keys {
 			value := item.Fields[key]
 			var valueStr string
-			if stripHTML {
-				if removeSpace {
-					valueStr = ReplaceAllSpace(strings.TrimSpace(stripHTMLTags(value)))
-				} else {
-					valueStr = strings.TrimSpace(stripHTMLTags(value))
-				}
-			} else {
-				if removeSpace {
-					valueStr = ReplaceAllSpace(strings.TrimSpace(value))
-				} else {
-					valueStr = strings.TrimSpace(value)
-				}
+
+			// Process value based on parameters
+			if params.StripHTML {
+				value = stripHTMLTags(value)
 			}
+
+			valueStr = strings.TrimSpace(value)
+
+			if params.RemoveSpace {
+				valueStr = ReplaceAllSpace(valueStr)
+			}
+
 			builder.WriteString(fmt.Sprintf("%s: %s\n", key, valueStr))
 		}
 
-		// 添加分隔线（最后一个条目不加）
+		// Add separator between items (except for the last item)
 		if i < len(rss.Channel.Items)-1 {
-			builder.WriteString(fmt.Sprintf("%s", strings.Repeat(separatorChar, 1)))
+			builder.WriteString(params.Separator)
 		}
 	}
 
