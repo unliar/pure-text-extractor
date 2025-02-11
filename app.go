@@ -65,6 +65,7 @@ func (i *Item) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		}
 	}
 }
+
 func (c *Channel) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	for {
 		token, err := d.Token()
@@ -134,108 +135,121 @@ func serveReadme(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Write(readmeContent)
 }
-func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
-	// 从查询参数中获取 HTML URL
-	htmlURL := r.URL.Query().Get("url")
-	if htmlURL == "" {
-		http.Error(w, "Missing HTML URL parameter", http.StatusBadRequest)
-		return
-	}
-	// 从查询参数中获取分隔线配置
-	separatorChar := r.URL.Query().Get("separator")
-	if separatorChar == "" {
-		separatorChar = "\n\n" // 默认分隔线
-	}
-	// 替换转义的换行符
-	separatorChar = strings.ReplaceAll(separatorChar, "\\n", "\n")
-
-	// 从查询参数中获取是否stripHTML配置
-	stripHTML := r.URL.Query().Get("stripHTML")
-	if stripHTML == "" {
-		stripHTML = "true" // 默认stripHTML
-	}
-	removeSpace := r.URL.Query().Get("removeSpace")
-	if removeSpace == "" {
-		removeSpace = "true" // removeSpace 默认为 true
-	}
-	// 从查询参数中获取 selector 配置
-	selector := r.URL.Query().Get("selector")
-	if selector == "" {
-		selector = "body" // 默认选择 body
-	}
-
-	// 处理 URL 中可能存在的额外查询参数
-	parsedURL, err := url.Parse(htmlURL)
-	if err != nil {
-		http.Error(w, "Invalid HTML URL", http.StatusBadRequest)
-		return
-	}
-
-	// 获取 HTML 内容
-	htmlContent, err := getHTMLContent(parsedURL.String(), selector, stripHTML == "true", separatorChar, removeSpace == "true")
-	if err != nil {
-		http.Error(w, "Failed to fetch HTML", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write([]byte(htmlContent))
-
+type HTMLParams struct {
+	URL         string
+	Selector    string
+	Separator   string
+	StripHTML   bool
+	RemoveSpace bool
 }
 
-func getHTMLContent(url string, selector string, stripHTML bool, separatorChar string, removeSpace bool) (string, error) {
+func extractHTMLParams(r *http.Request) (HTMLParams, error) {
+	// Extract URL
+	htmlURL := r.URL.Query().Get("url")
+	if htmlURL == "" {
+		return HTMLParams{}, fmt.Errorf("missing HTML URL parameter")
+	}
+
+	// Parse URL
+	parsedURL, err := url.Parse(htmlURL)
+	if err != nil {
+		return HTMLParams{}, fmt.Errorf("invalid HTML URL")
+	}
+
+	// Extract and set default parameters
+	params := HTMLParams{
+		URL:         parsedURL.String(),
+		Selector:    r.URL.Query().Get("selector"),
+		Separator:   r.URL.Query().Get("separator"),
+		StripHTML:   r.URL.Query().Get("stripHTML") != "false",
+		RemoveSpace: r.URL.Query().Get("removeSpace") != "false",
+	}
+
+	// Set default selector
+	if params.Selector == "" {
+		params.Selector = "body"
+	}
+
+	// Set default separator and replace escaped newlines
+	if params.Separator == "" {
+		params.Separator = "\n\n"
+	}
+	params.Separator = strings.ReplaceAll(params.Separator, "\\n", "\n")
+
+	return params, nil
+}
+
+func getHTMLContent(params HTMLParams) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(params.URL)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch HTML: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// 解析 HTML
+	// Parse HTML
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse HTML: %w", err)
 	}
+
 	var content string
-	// 获取网页 meta 的标题
+	// Get webpage meta title
 	title := doc.Find("title").Text()
 	if title != "" {
-		content = "website title: " + title + separatorChar
+		content = "website title: " + title + params.Separator
 	}
 
-	if stripHTML {
-		text := doc.Find(selector).Text()
-		if removeSpace {
-			content += ReplaceAllSpace(text)
-		} else {
-			content += text
-		}
+	// Process content based on parameters
+	var extractedContent string
+	if params.StripHTML {
+		extractedContent = doc.Find(params.Selector).Text()
 	} else {
-		html, err := doc.Find(selector).Html()
+		extractedContent, err = doc.Find(params.Selector).Html()
 		if err != nil {
 			return "", fmt.Errorf("failed to get HTML content: %w", err)
 		}
-		if removeSpace {
-			content += ReplaceAllSpace(html)
-		} else {
-			content += html
-		}
 	}
 
-	if err != nil {
-		return "", fmt.Errorf("failed to get HTML content: %w", err)
+	// Apply additional processing
+	if params.RemoveSpace {
+		extractedContent = ReplaceAllSpace(extractedContent)
 	}
+
+	content += extractedContent
 
 	if content == "" {
 		return "", fmt.Errorf("empty HTML content")
 	}
 
 	return content, nil
+}
+
+func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate HTTP method
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract and validate parameters
+	params, err := extractHTMLParams(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Fetch and process HTML content
+	htmlContent, err := getHTMLContent(params)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch HTML: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte(htmlContent))
 }
 
 func processRSSHandler(w http.ResponseWriter, r *http.Request) {
