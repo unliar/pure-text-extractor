@@ -17,6 +17,17 @@ import (
 	_ "embed"
 )
 
+var spaceRegex = regexp.MustCompile(`\s+`)
+var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
+
+func stripHTMLTags(input string) string {
+	return htmlTagRegex.ReplaceAllString(input, "")
+}
+
+func ReplaceAllSpace(input string) string {
+	return spaceRegex.ReplaceAllString(input, " ")
+}
+
 // RSS 数据结构定义
 type RSS struct {
 	Channel Channel `xml:"channel"`
@@ -397,17 +408,4 @@ func formatContent(rss RSS, params RSSParams) string {
 	}
 
 	return builder.String()
-}
-
-// stripHTMLTags removes HTML tags from a string
-func stripHTMLTags(input string) string {
-	// Remove HTML tags
-	htmlTagRegex := regexp.MustCompile(`<[^>]*>`)
-	return htmlTagRegex.ReplaceAllString(input, "")
-}
-
-func ReplaceAllSpace(input string) string {
-	// Remove multiple consecutive whitespace characters, including newlines
-	re := regexp.MustCompile(`\s+`)
-	return re.ReplaceAllString(input, " ")
 }
