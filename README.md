@@ -19,9 +19,9 @@
 # example
 
 `shell
-curl "http://localhost:8080/process-rss?url=https://rsshub.flyneko.com/weibo/user/1888981347&separator=\n\n&stripHTML=false"
+curl "http://localhost:8080/process-rss?url=https://rsshub.app/weibo/user/1888981347&separator=\n\n&stripHTML=false"
 
-curl "http://localhost:8080/process-html?url=https://rsshub.flyneko.com&separator=\n\n&stripHTML=false&selector=body"
+curl "http://localhost:8080/process-html?url=https://rsshub.app&separator=\n\n&stripHTML=false&selector=body"
 `
 
 # docker deployment
