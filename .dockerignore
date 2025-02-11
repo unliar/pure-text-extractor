@@ -7,3 +7,4 @@ cache
 build.sh
 bk.sh
 dist
+.DS_Store
