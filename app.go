@@ -205,9 +205,14 @@ func getHTMLContent(url string, selector string, stripHTML bool, separatorChar s
 	}
 
 	if stripHTML {
-		content += doc.Find(selector).Text()
+		text := doc.Find(selector).Text()
+		content += ReplaceAllSpace(text)
 	} else {
-		content, err = doc.Find(selector).Html()
+		html, err := doc.Find(selector).Html()
+		if err != nil {
+			return "", fmt.Errorf("failed to get HTML content: %w", err)
+		}
+		content += ReplaceAllSpace(html)
 	}
 
 	if err != nil {
@@ -320,9 +325,9 @@ func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) st
 			value := item.Fields[key]
 			var valueStr string
 			if stripHTML {
-				valueStr = strings.TrimSpace(stripHTMLTags(value))
+				valueStr = ReplaceAllSpace(strings.TrimSpace(stripHTMLTags(value)))
 			} else {
-				valueStr = strings.TrimSpace(value)
+				valueStr = ReplaceAllSpace(strings.TrimSpace(value))
 			}
 			builder.WriteString(fmt.Sprintf("%s: %s\n", key, valueStr))
 		}
@@ -341,4 +346,10 @@ func stripHTMLTags(input string) string {
 	// Remove HTML tags
 	htmlTagRegex := regexp.MustCompile(`<[^>]*>`)
 	return htmlTagRegex.ReplaceAllString(input, "")
+}
+
+func ReplaceAllSpace(input string) string {
+	// Remove multiple consecutive whitespace characters, including newlines
+	re := regexp.MustCompile(`\s+`)
+	return re.ReplaceAllString(input, " ")
 }
