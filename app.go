@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+
+	_ "embed"
 )
 
 // RSS 数据结构定义
@@ -143,6 +145,13 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+//go:embed README.md
+var readmeContent []byte
+
+func serveReadme(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Write(readmeContent)
+}
 func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
