@@ -1,4 +1,4 @@
-# pure-text-rss
+# pure-text-extractor
 
 # params
 
