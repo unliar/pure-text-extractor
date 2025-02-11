@@ -5,6 +5,7 @@
 - `url`: RSS URL
 - `separator`: item line separator default to `\n\n`
 - `stripHTML`: whether to strip HTML tags default to `true`
+- `length`: item length default to `0` (no limit)
 
 # example
 
