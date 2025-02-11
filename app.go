@@ -151,6 +151,9 @@ func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	if separatorChar == "" {
 		separatorChar = "\n\n" // 默认分隔线
 	}
+	// 替换转义的换行符
+	separatorChar = strings.ReplaceAll(separatorChar, "\\n", "\n")
+
 	// 从查询参数中获取是否stripHTML配置
 	stripHTML := r.URL.Query().Get("stripHTML")
 	if stripHTML == "" {
