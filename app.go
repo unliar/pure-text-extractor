@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // RSS 数据结构定义
@@ -117,8 +119,93 @@ func (c *Channel) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 
 func main() {
 	http.HandleFunc("/process-rss", processRSSHandler)
+	http.HandleFunc("/process-html", processHTMLHandler)
 	fmt.Println("Server listening on :8080")
 	http.ListenAndServe(":8080", nil)
+}
+
+func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 从查询参数中获取 HTML URL
+	htmlURL := r.URL.Query().Get("url")
+	if htmlURL == "" {
+		http.Error(w, "Missing HTML URL parameter", http.StatusBadRequest)
+		return
+	}
+	// 从查询参数中获取分隔线配置
+	separatorChar := r.URL.Query().Get("separator")
+	if separatorChar == "" {
+		separatorChar = "\n\n" // 默认分隔线
+	}
+	// 从查询参数中获取是否stripHTML配置
+	stripHTML := r.URL.Query().Get("stripHTML")
+	if stripHTML == "" {
+		stripHTML = "true" // 默认stripHTML
+	}
+	// 从查询参数中获取 selector 配置
+	selector := r.URL.Query().Get("selector")
+	if selector == "" {
+		selector = "body" // 默认选择 body
+	}
+
+	// 处理 URL 中可能存在的额外查询参数
+	parsedURL, err := url.Parse(htmlURL)
+	if err != nil {
+		http.Error(w, "Invalid HTML URL", http.StatusBadRequest)
+		return
+	}
+
+	// 获取 HTML 内容
+	htmlContent, err := getHTMLContent(parsedURL.String(), selector, stripHTML == "true", separatorChar)
+	if err != nil {
+		http.Error(w, "Failed to fetch HTML", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte(htmlContent))
+
+}
+
+func getHTMLContent(url string, selector string, stripHTML bool, separatorChar string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch HTML: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 解析 HTML
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse HTML: %w", err)
+	}
+	var content string
+	// 获取网页 meta 的标题
+	title := doc.Find("title").Text()
+	if title != "" {
+		content = "website title: " + title + separatorChar
+	}
+
+	if stripHTML {
+		content += doc.Find(selector).Text()
+	} else {
+		content, err = doc.Find(selector).Html()
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to get HTML content: %w", err)
+	}
+
+	if content == "" {
+		return "", fmt.Errorf("empty HTML content")
+	}
+
+	return content, nil
 }
 
 func processRSSHandler(w http.ResponseWriter, r *http.Request) {
