@@ -8,6 +8,7 @@
 - `separator`: item line separator default to `\n\n`
 - `stripHTML`: whether to strip HTML tags default to `true`
 - `length`: item length default to `0` (no limit)
+- `removeSpace`: whether to remove space default to `true`
 
 ## process-html
 
@@ -15,6 +16,7 @@
 - `separator`: item line separator default to `\n\n`
 - `stripHTML`: whether to strip HTML tags default to `true`
 - `selector`: CSS selector for the content, default to `body`. the detail can be found at https://github.com/PuerkitoBio/goquery
+- `removeSpace`: whether to remove space default to `true`
 
 # example
 
