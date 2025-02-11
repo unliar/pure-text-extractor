@@ -159,6 +159,10 @@ func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	if stripHTML == "" {
 		stripHTML = "true" // 默认stripHTML
 	}
+	removeSpace := r.URL.Query().Get("removeSpace")
+	if removeSpace == "" {
+		removeSpace = "true" // removeSpace 默认为 true
+	}
 	// 从查询参数中获取 selector 配置
 	selector := r.URL.Query().Get("selector")
 	if selector == "" {
@@ -173,7 +177,7 @@ func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 获取 HTML 内容
-	htmlContent, err := getHTMLContent(parsedURL.String(), selector, stripHTML == "true", separatorChar)
+	htmlContent, err := getHTMLContent(parsedURL.String(), selector, stripHTML == "true", separatorChar, removeSpace == "true")
 	if err != nil {
 		http.Error(w, "Failed to fetch HTML", http.StatusInternalServerError)
 		return
@@ -184,7 +188,7 @@ func processHTMLHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func getHTMLContent(url string, selector string, stripHTML bool, separatorChar string) (string, error) {
+func getHTMLContent(url string, selector string, stripHTML bool, separatorChar string, removeSpace bool) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -206,13 +210,21 @@ func getHTMLContent(url string, selector string, stripHTML bool, separatorChar s
 
 	if stripHTML {
 		text := doc.Find(selector).Text()
-		content += ReplaceAllSpace(text)
+		if removeSpace {
+			content += ReplaceAllSpace(text)
+		} else {
+			content += text
+		}
 	} else {
 		html, err := doc.Find(selector).Html()
 		if err != nil {
 			return "", fmt.Errorf("failed to get HTML content: %w", err)
 		}
-		content += ReplaceAllSpace(html)
+		if removeSpace {
+			content += ReplaceAllSpace(html)
+		} else {
+			content += html
+		}
 	}
 
 	if err != nil {
@@ -251,6 +263,10 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	if separatorChar == "" {
 		separatorChar = "\n\n" // 默认分隔线
 	}
+	removeSpace := r.URL.Query().Get("removeSpace")
+	if removeSpace == "" {
+		removeSpace = "true" // removeSpace 默认为 true
+	}
 	// 获取长度配置
 	length := r.URL.Query().Get("length")
 	if length == "" {
@@ -270,7 +286,7 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	stripHTMLBool := stripHTML != "false" // 默认为true
 
 	// 获取并解析 RSS 内容
-	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool, lengthInt)
+	content, err := fetchAndParseRSS(parsedURL.String(), separatorChar, stripHTMLBool, lengthInt, removeSpace == "true")
 	if err != nil {
 		http.Error(w, "Error processing RSS feed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -280,7 +296,7 @@ func processRSSHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(content))
 }
 
-func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length int) (string, error) {
+func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length int, removeSpace bool) (string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -297,10 +313,10 @@ func fetchAndParseRSS(url string, separatorChar string, stripHTML bool, length i
 		return "", fmt.Errorf("failed to parse RSS: %w", err)
 	}
 
-	return formatContent(rss, separatorChar, stripHTML, length), nil
+	return formatContent(rss, separatorChar, stripHTML, length, removeSpace), nil
 }
 
-func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) string {
+func formatContent(rss RSS, separatorChar string, stripHTML bool, length int, removeSpace bool) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Channel Title: %s\n", rss.Channel.Title))
 	if rss.Channel.ChannelLink != "" {
@@ -325,9 +341,17 @@ func formatContent(rss RSS, separatorChar string, stripHTML bool, length int) st
 			value := item.Fields[key]
 			var valueStr string
 			if stripHTML {
-				valueStr = ReplaceAllSpace(strings.TrimSpace(stripHTMLTags(value)))
+				if removeSpace {
+					valueStr = ReplaceAllSpace(strings.TrimSpace(stripHTMLTags(value)))
+				} else {
+					valueStr = strings.TrimSpace(stripHTMLTags(value))
+				}
 			} else {
-				valueStr = ReplaceAllSpace(strings.TrimSpace(value))
+				if removeSpace {
+					valueStr = ReplaceAllSpace(strings.TrimSpace(value))
+				} else {
+					valueStr = strings.TrimSpace(value)
+				}
 			}
 			builder.WriteString(fmt.Sprintf("%s: %s\n", key, valueStr))
 		}
