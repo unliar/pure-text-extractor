@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -123,24 +122,7 @@ func (c *Channel) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 func main() {
 	http.HandleFunc("/process-rss", processRSSHandler)
 	http.HandleFunc("/process-html", processHTMLHandler)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Only serve README for the root path
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-
-		// Read README.md
-		readmeContent, err := os.ReadFile("README.md")
-		if err != nil {
-			http.Error(w, "Could not read README", http.StatusInternalServerError)
-			return
-		}
-
-		// Set content type to markdown/text
-		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		w.Write(readmeContent)
-	})
+	http.HandleFunc("/", serveReadme)
 	fmt.Println("Server listening on :8080")
 	http.ListenAndServe(":8080", nil)
 }
